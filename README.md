@@ -6,6 +6,15 @@
 
 This DApp showcases the next generation of privacy-preserving blockchain applications. Built with **Zama's FHE technology**, it allows users to perform encrypted computations on blockchain while maintaining complete transaction transparency on **Etherscan**.
 
+## App - Demo link
+
+ 
+
+<a href="https://drive.google.com/file/d/1aKmqkTs5HC5hoUO__ZRrfA126uPIlKRp/edit">Video demo</a>
+
+
+
+
 ## ✨ Key Features
 
 - 🔐 **Privacy-First**: All counter operations use fully homomorphic encryption
@@ -150,5 +159,6 @@ MIT License - See LICENSE file for details
 ---
 
 **🌟 Experience the future of privacy-preserving blockchain applications!**
+
 
 *Built with ❤️ using Zama FHE technology and modern Web3 stack*
