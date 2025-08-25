@@ -1,0 +1,115 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "HCULimits",
+  "sourceName": "contracts/HCULimits.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "DECRYPTION_BASE_COST",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "DECRYPTION_PER_VALUE",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "EUINT32_ADD_NON_SCALAR",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "EUINT32_DIV_NON_SCALAR",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "EUINT32_MUL_NON_SCALAR",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "EUINT32_SUB_NON_SCALAR",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_GLOBAL_HCU",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_SEQUENTIAL_HCU",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x61011b610039600b82828239805160001a607314602c57634e487b7160e01b600052600060045260246000fd5b30600052607381538281f3fe730000000000000000000000000000000000000000301460806040526004361060885760003560e01c8063af0794d311605f578063af0794d31460c3578063b0df211d1460cc578063c79638e91460d4578063cb118e501460dc57600080fd5b8063288cedfb14608d5780632cfe6e181460a857806378a497851460b15780639f43a8041460ba575b600080fd5b60966207a12081565b60405190815260200160405180910390f35b60966201d8a881565b6096620f424081565b60966201d4c081565b6096620249f081565b609661271081565b609661c35081565b60966202bf208156fea2646970667358221220cca8dc50b552243e3897493285db3d0bad23a8bf2c6695ec2516c5936f61791d64736f6c634300081c0033",
+  "deployedBytecode": "0x730000000000000000000000000000000000000000301460806040526004361060885760003560e01c8063af0794d311605f578063af0794d31460c3578063b0df211d1460cc578063c79638e91460d4578063cb118e501460dc57600080fd5b8063288cedfb14608d5780632cfe6e181460a857806378a497851460b15780639f43a8041460ba575b600080fd5b60966207a12081565b60405190815260200160405180910390f35b60966201d8a881565b6096620f424081565b60966201d4c081565b6096620249f081565b609661271081565b609661c35081565b60966202bf208156fea2646970667358221220cca8dc50b552243e3897493285db3d0bad23a8bf2c6695ec2516c5936f61791d64736f6c634300081c0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

@@ -1,0 +1,345 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import { FHE, euint64, ebool, externalEbool } from "@fhevm/solidity/lib/FHE.sol";
+import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
+import { HCULimits } from "./HCULimits.sol";
+
+/**
+ * @title EncryptedVoting
+ * @dev 一个使用FHEVM 0.7.0实现隐私保护的投票合约
+ * @notice 所有投票都是加密的，结果只有在投票结束后才能通过解密预言机解密
+ * 
+ * FHEVM 0.7.0 更新:
+ * - 移除了 ebytes 类型（已弃用）
+ * - 使用 HCU (同态复杂度单元) 替代 gas 限制
+ * - 每笔交易的顺序操作深度限制: 5,000,000 HCU
+ * - 每笔交易的全局操作复杂度限制: 20,000,000 HCU
+ */
+contract EncryptedVoting is SepoliaConfig {
+    
+    // 投票状态枚举
+    enum VotingStatus {
+        Open,           // 投票进行中
+        DecryptionInProgress,  // 解密进行中
+        ResultsDecrypted       // 结果已解密
+    }
+    
+    // 状态变量
+    mapping(address => bool) public hasVoted;
+    VotingStatus public status;
+    
+    // 加密的投票计数
+    euint64 private encryptedYesVotes;
+    euint64 private encryptedNoVotes;
+    
+    // 解密后的结果
+    uint64 public decryptedYesVotes;
+    uint64 public decryptedNoVotes;
+    
+    // 总投票数计数器（公开，实时更新）
+    uint256 public totalVotes;
+    
+    // 投票截止时间
+    uint256 public voteDeadline;
+    
+    // 投票主题
+    string public votingTopic;
+    
+    // 合约拥有者
+    address public owner;
+    
+    // 事件
+    event VoteCasted(address indexed voter, uint256 totalVotes);
+    event DecryptionRequested(uint256 requestId);
+    event ResultsDecrypted(uint64 yesVotes, uint64 noVotes);
+    event VotingCreated(string topic, uint256 deadline);
+    
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;
+    }
+    
+    modifier votingOpen() {
+        require(status == VotingStatus.Open, "Voting is not open");
+        require(block.timestamp <= voteDeadline, "Voting deadline has passed");
+        _;
+    }
+    
+    /**
+     * @dev 构造函数
+     * @param _topic 投票主题
+     * @param _durationInHours 投票持续时间（小时）
+     */
+    constructor(string memory _topic, uint256 _durationInHours) {
+        owner = msg.sender;
+        votingTopic = _topic;
+        voteDeadline = block.timestamp + (_durationInHours * 1 hours);
+        status = VotingStatus.Open;
+        
+        // 初始化加密投票计数为0
+        encryptedYesVotes = FHE.asEuint64(0);
+        encryptedNoVotes = FHE.asEuint64(0);
+        
+        // 🆕 允许合约访问加密变量 - 持久访问权限
+        FHE.allowThis(encryptedYesVotes);
+        FHE.allowThis(encryptedNoVotes);
+        
+        emit VotingCreated(_topic, voteDeadline);
+    }
+    
+    /**
+     * @dev 投票函数
+     * @param support 加密的投票选择（true=赞成，false=反对）
+     * @param inputProof 零知识证明
+     * @notice 此操作的估算 HCU 成本约为 8,000 HCU (在限制范围内)
+     */
+    function vote(externalEbool support, bytes memory inputProof) public votingOpen {
+        require(!hasVoted[msg.sender], "You have already voted");
+        
+        // 验证 HCU 成本在限制范围内
+        uint256 estimatedCost = HCULimits.estimateVotingCost();
+        require(
+            HCULimits.isWithinSequentialLimit(estimatedCost) && 
+            HCULimits.isWithinGlobalLimit(estimatedCost),
+            "Operation exceeds HCU limits"
+        );
+        
+        // 标记用户已投票并增加总投票数
+        hasVoted[msg.sender] = true;
+        totalVotes++;
+        
+        // 将外部加密布尔值转换为内部类型
+        ebool isSupport = FHE.fromExternal(support, inputProof);
+        
+        // 使用FHE.select进行条件加法：如果支持则增加yesVotes，否则增加noVotes
+        encryptedYesVotes = FHE.select(
+            isSupport, 
+            FHE.add(encryptedYesVotes, FHE.asEuint64(1)), 
+            encryptedYesVotes
+        );
+        
+        encryptedNoVotes = FHE.select(
+            isSupport, 
+            encryptedNoVotes, 
+            FHE.add(encryptedNoVotes, FHE.asEuint64(1))
+        );
+        
+        // 🆕 更新访问权限 - 使用持久访问控制
+        FHE.allowThis(encryptedYesVotes);    // 合约持久访问
+        FHE.allowThis(encryptedNoVotes);     // 合约持久访问
+        
+        // 可选：为投票者提供临时访问（仅在当前交易中有效）
+        FHE.allowTransient(encryptedYesVotes, msg.sender);
+        FHE.allowTransient(encryptedNoVotes, msg.sender);
+        
+        emit VoteCasted(msg.sender, totalVotes);
+    }
+    
+    /**
+     * @dev 请求解密投票结果
+     * @notice 只有在投票结束后才能调用
+     * @notice 此操作的估算 HCU 成本约为 7,000 HCU (在限制范围内)
+     */
+    function requestVoteDecryption() public {
+        require(block.timestamp > voteDeadline, "Voting is still in progress");
+        require(status == VotingStatus.Open, "Decryption already requested or completed");
+        
+        // 验证解密操作的 HCU 成本
+        uint256 estimatedCost = HCULimits.estimateDecryptionCost(2); // 2个值需要解密
+        require(
+            HCULimits.isWithinSequentialLimit(estimatedCost) && 
+            HCULimits.isWithinGlobalLimit(estimatedCost),
+            "Decryption operation exceeds HCU limits"
+        );
+        
+        // 准备要解密的密文数组
+        bytes32[] memory cts = new bytes32[](2);
+        cts[0] = FHE.toBytes32(encryptedYesVotes);
+        cts[1] = FHE.toBytes32(encryptedNoVotes);
+        
+        // 请求解密
+        uint256 requestId = FHE.requestDecryption(cts, this.callbackDecryptVotes.selector);
+        status = VotingStatus.DecryptionInProgress;
+        
+        emit DecryptionRequested(requestId);
+    }
+    
+    /**
+     * @dev 解密回调函数
+     * @param requestId 请求ID
+     * @param yesVotes 解密后的赞成票数
+     * @param noVotes 解密后的反对票数  
+     * @param signatures 签名数组用于验证
+     */
+    function callbackDecryptVotes(
+        uint256 requestId, 
+        uint64 yesVotes, 
+        uint64 noVotes, 
+        bytes[] memory signatures
+    ) public {
+        // 验证签名
+        FHE.checkSignatures(requestId, signatures);
+        
+        // 存储解密结果
+        decryptedYesVotes = yesVotes;
+        decryptedNoVotes = noVotes;
+        status = VotingStatus.ResultsDecrypted;
+        
+        emit ResultsDecrypted(yesVotes, noVotes);
+    }
+    
+    /**
+     * @dev 获取投票结果
+     * @return yesVotes 赞成票数
+     * @return noVotes 反对票数
+     */
+    function getResults() public view returns (uint64 yesVotes, uint64 noVotes) {
+        require(status == VotingStatus.ResultsDecrypted, "Results have not been decrypted yet");
+        return (decryptedYesVotes, decryptedNoVotes);
+    }
+    
+    /**
+     * @dev 获取投票基本信息
+     */
+    function getVotingInfo() public view returns (
+        string memory topic,
+        uint256 deadline,
+        VotingStatus currentStatus,
+        bool userHasVoted,
+        uint256 totalVoteCount
+    ) {
+        return (
+            votingTopic,
+            voteDeadline,
+            status,
+            hasVoted[msg.sender],
+            totalVotes
+        );
+    }
+    
+    /**
+     * @dev 检查投票是否仍在进行中
+     */
+    function isVotingActive() public view returns (bool) {
+        return status == VotingStatus.Open && block.timestamp <= voteDeadline;
+    }
+    
+    /**
+     * @dev 获取剩余投票时间（秒）
+     */
+    function getTimeLeft() public view returns (uint256) {
+        if (block.timestamp >= voteDeadline) {
+            return 0;
+        }
+        return voteDeadline - block.timestamp;
+    }
+    
+    /**
+     * @dev 紧急停止投票（仅拥有者）
+     */
+    function emergencyStop() public onlyOwner {
+        require(status == VotingStatus.Open, "Voting is not open");
+        voteDeadline = block.timestamp;
+    }
+    
+    /**
+     * @dev 更新投票截止时间（仅拥有者）
+     * @param newDeadline 新的截止时间戳
+     */
+    function updateVotingDeadline(uint256 newDeadline) public onlyOwner {
+        require(status == VotingStatus.Open, "Voting is not open");
+        require(newDeadline > block.timestamp, "New deadline must be in the future");
+        voteDeadline = newDeadline;
+    }
+    
+    /**
+     * @dev 设置投票截止时间为10月1日
+     */
+    function setDeadlineToOctober1st() public onlyOwner {
+        // 2025年10月1日 23:59:59 UTC 的时间戳
+        uint256 october1st2025 = 1759363199; // 2025-10-01 23:59:59 UTC
+        voteDeadline = october1st2025;
+        
+        // 如果投票已经结束，重置状态为进行中
+        if (status != VotingStatus.Open) {
+            status = VotingStatus.Open;
+        }
+    }
+    
+    /**
+     * @dev 重置投票状态为进行中（仅拥有者）
+     */
+    function resetVotingStatus() public onlyOwner {
+        status = VotingStatus.Open;
+        // 清除解密结果
+        decryptedYesVotes = 0;
+        decryptedNoVotes = 0;
+        // 延长投票时间24小时以确保可以投票
+        voteDeadline = block.timestamp + 24 hours;
+    }
+    
+    /**
+     * @dev 完全重置投票（时间和状态）
+     */
+    function resetVotingCompletely() public onlyOwner {
+        status = VotingStatus.Open;
+        decryptedYesVotes = 0;
+        decryptedNoVotes = 0;
+        // 设置为2025年10月1日
+        voteDeadline = 1759363199; // 2025-10-01 23:59:59 UTC
+    }
+    
+    /**
+     * @dev 获取合约的基本统计信息（不包含加密结果）
+     */
+    function getStats() public view returns (
+        uint256 totalVoters,
+        uint256 timeRemaining,
+        bool active
+    ) {
+        // 注意：我们无法返回实际投票数，因为它们是加密的
+        return (
+            0, // 无法计算总投票数，因为我们无法访问加密数据
+            getTimeLeft(),
+            isVotingActive()
+        );
+    }
+    
+    /**
+     * @dev 获取 FHEVM 0.7.0 HCU 限制信息
+     * @return sequentialLimit 顺序操作 HCU 限制
+     * @return globalLimit 全局操作 HCU 限制
+     * @return votingCost 投票操作的估算 HCU 成本
+     * @return decryptionCost 解密操作的估算 HCU 成本
+     */
+    function getHCUInfo() public pure returns (
+        uint256 sequentialLimit,
+        uint256 globalLimit,
+        uint256 votingCost,
+        uint256 decryptionCost
+    ) {
+        (sequentialLimit, globalLimit) = HCULimits.getLimits();
+        votingCost = HCULimits.estimateVotingCost();
+        decryptionCost = HCULimits.estimateDecryptionCost(2);
+    }
+    
+    /**
+     * @dev 🆕 验证发送者对投票数据的访问权限
+     * @return canAccessYes 是否可以访问赞成票数据
+     * @return canAccessNo 是否可以访问反对票数据
+     */
+    function verifyVoteAccess() external view returns (bool canAccessYes, bool canAccessNo) {
+        canAccessYes = FHE.isSenderAllowed(encryptedYesVotes);
+        canAccessNo = FHE.isSenderAllowed(encryptedNoVotes);
+    }
+    
+    /**
+     * @dev 🆕 为特定用户授予投票数据的访问权限（仅拥有者）
+     * @param user 要授权的用户地址
+     */
+    function grantVoteAccess(address user) external onlyOwner {
+        FHE.allow(encryptedYesVotes, user);
+        FHE.allow(encryptedNoVotes, user);
+    }
+}

@@ -1,0 +1,153 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import { FHE, euint32, externalEuint32 } from "@fhevm/solidity/lib/FHE.sol";
+import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
+import { HCULimits } from "./HCULimits.sol";
+
+/// @title A simple FHE counter contract - FHEVM 0.7.0 compatible
+/// @dev Uses HCU (Homomorphic Computation Unit) limits instead of gas limits
+contract FHECounter is SepoliaConfig {
+  // Counter states following conversion guide patterns
+  enum CounterStatus {
+    Active,
+    DecryptionInProgress,
+    ValueDecrypted
+  }
+  
+  euint32 private _count;
+  CounterStatus public status;
+  uint32 public decryptedCount;  // Decrypted value (only visible after decryption)
+
+  /// @notice Initialize contract with encrypted counter set to 0
+  /// @dev Following FHEVM conversion guide best practices
+  constructor() {
+    // Initialize encrypted counter to 0 (following conversion guide)
+    _count = FHE.asEuint32(0);
+    status = CounterStatus.Active;
+    
+    // Set access permissions for the contract itself
+    FHE.allowThis(_count);
+  }
+
+  /// @notice Returns the current count (encrypted form)
+  function getCount() external view returns (euint32) {
+    return _count;
+  }
+
+  /// @notice Increments the counter by a specific value
+  /// @dev Estimated HCU cost: ~121,000 HCU (euint32 add operation)
+  function increment(externalEuint32 inputEuint32, bytes calldata inputProof) external {
+    // Verify HCU cost is within limits
+    uint256 estimatedCost = HCULimits.EUINT32_ADD_NON_SCALAR;
+    require(
+        HCULimits.isWithinSequentialLimit(estimatedCost) && 
+        HCULimits.isWithinGlobalLimit(estimatedCost),
+        "Operation exceeds HCU limits"
+    );
+    
+    euint32 evalue = FHE.fromExternal(inputEuint32, inputProof);
+    _count = FHE.add(_count, evalue);
+
+    // Update access permissions following conversion guide best practices
+    FHE.allowThis(_count);                      // Contract persistent access
+    FHE.allowTransient(_count, msg.sender);     // User transient access
+  }
+
+  /// @notice Decrements the counter by a specific value
+  /// @dev This example omits overflow/underflow checks for simplicity and readability.
+  /// In a production contract, proper range checks should be implemented.
+  /// @dev Estimated HCU cost: ~120,000 HCU (euint32 sub operation)
+  function decrement(externalEuint32 inputEuint32, bytes calldata inputProof) external {
+    // Verify HCU cost is within limits
+    uint256 estimatedCost = HCULimits.EUINT32_SUB_NON_SCALAR;
+    require(
+        HCULimits.isWithinSequentialLimit(estimatedCost) && 
+        HCULimits.isWithinGlobalLimit(estimatedCost),
+        "Operation exceeds HCU limits"
+    );
+    
+    euint32 encryptedEuint32 = FHE.fromExternal(inputEuint32, inputProof);
+    _count = FHE.sub(_count, encryptedEuint32);
+
+    // Update access permissions following conversion guide best practices
+    FHE.allowThis(_count);                      // Contract persistent access
+    FHE.allowTransient(_count, msg.sender);     // User transient access
+  }
+  
+  /// @notice Request decryption of current counter value
+  /// @dev Following conversion guide async decryption pattern
+  function requestCountDecryption() external {
+    require(status == CounterStatus.Active, "Decryption already requested or completed");
+    
+    // Verify HCU cost for decryption
+    uint256 estimatedCost = HCULimits.estimateDecryptionCost(1);
+    require(
+        HCULimits.isWithinSequentialLimit(estimatedCost) && 
+        HCULimits.isWithinGlobalLimit(estimatedCost),
+        "Decryption operation exceeds HCU limits"
+    );
+    
+    // Prepare decryption request
+    bytes32[] memory cts = new bytes32[](1);
+    cts[0] = FHE.toBytes32(_count);
+    
+    // Request decryption using oracle (following conversion guide)
+    FHE.requestDecryption(cts, this.callbackDecryptCount.selector);
+    status = CounterStatus.DecryptionInProgress;
+  }
+  
+  /// @notice Decryption callback function
+  /// @dev Following conversion guide callback pattern
+  /// @param requestId The decryption request ID
+  /// @param countValue The decrypted counter value
+  /// @param signatures Verification signatures
+  function callbackDecryptCount(
+    uint256 requestId,
+    uint32 countValue,
+    bytes[] memory signatures
+  ) external {
+    // Verify signatures (following conversion guide)
+    FHE.checkSignatures(requestId, signatures);
+    
+    // Store decrypted result
+    decryptedCount = countValue;
+    status = CounterStatus.ValueDecrypted;
+  }
+  
+  /// @notice Get decrypted counter value
+  /// @dev Only available after decryption is completed
+  /// @return The decrypted counter value
+  function getDecryptedCount() external view returns (uint32) {
+    require(status == CounterStatus.ValueDecrypted, "Counter value has not been decrypted yet");
+    return decryptedCount;
+  }
+  
+  /// @notice Check if counter value is available in decrypted form
+  /// @return True if decrypted value is available
+  function isCountDecrypted() external view returns (bool) {
+    return status == CounterStatus.ValueDecrypted;
+  }
+  
+  /// @notice Get counter status information
+  /// @return currentStatus Current status of the counter
+  function getCounterStatus() external view returns (CounterStatus currentStatus) {
+    return status;
+  }
+  
+  /// @notice Get HCU limit information for this contract
+  /// @return sequentialLimit Sequential operation HCU limit
+  /// @return globalLimit Global operation HCU limit
+  /// @return addCost Cost of increment operation
+  /// @return subCost Cost of decrement operation
+  function getHCUInfo() external pure returns (
+    uint256 sequentialLimit,
+    uint256 globalLimit,
+    uint256 addCost,
+    uint256 subCost
+  ) {
+    (sequentialLimit, globalLimit) = HCULimits.getLimits();
+    addCost = HCULimits.EUINT32_ADD_NON_SCALAR;
+    subCost = HCULimits.EUINT32_SUB_NON_SCALAR;
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "D:\\web3\\dapp2\\contracts\\HCULimits.sol": {
+      "lastModificationDate": 1756019229145,
+      "contentHash": "cf5cc07c751f844a85205986b0c2e49e",
+      "sourceName": "contracts/HCULimits.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "HCULimits"
+      ]
+    },
+    "D:\\web3\\dapp2\\contracts\\SimpleFHECounter.sol": {
+      "lastModificationDate": 1756019303638,
+      "contentHash": "15fd73de66e288d5115e16b4645dd7ff",
+      "sourceName": "contracts/SimpleFHECounter.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "SimpleFHECounter"
+      ]
+    }
+  }
+}
